@@ -1,0 +1,26 @@
+[project]
+name = "litellm-plugin-language-detector"
+version = "1.0.0"
+description = "Reference LiteLLM Routing Plugin: detects the user's language and publishes it as a signal."
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.9"
+authors = [{ name = "LiteLLM Plugin Ecosystem" }]
+keywords = ["litellm", "routing", "plugin", "language-detection"]
+dependencies = ["lingua-language-detector>=2.0.0", "pydantic>=2.0"]
+
+[project.optional-dependencies]
+dev = ["pytest>=7.0", "pytest-asyncio>=0.21"]
+
+[project.urls]
+Homepage = "https://github.com/litellm/litellm-plugin-language-detector"
+
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["litellm_plugin_language_detector*"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"

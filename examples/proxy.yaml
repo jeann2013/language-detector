@@ -1,0 +1,32 @@
+# Example LiteLLM Proxy config wiring up the Language Detector plugin.
+# Requires litellm>=1.92 (Routing Plugins).
+#
+# Once loaded, every request's context.signals["language-detector"] carries
+# the detected language, surfaced to the Router and downstream strategies
+# on metadata["routing_plugin_signals"].
+
+model_list:
+  - model_name: gpt-4o
+    litellm_params:
+      model: openai/gpt-4o
+      api_key: os.environ/OPENAI_API_KEY
+
+# Runs on every routing decision (mirrors Router(plugins=[...]) in the SDK).
+router_settings:
+  plugins:
+    - litellm_plugin_language_detector.plugin.language_detector_plugin
+
+# Alternative: scope it to a complexity router's tier-pick instead, by
+# nesting it under that model's complexity_router_config.plugins:
+#
+# model_list:
+#   - model_name: smart-router
+#     litellm_params:
+#       model: auto_router/complexity_router
+#       complexity_router_config:
+#         tiers:
+#           SIMPLE: ["gpt-4o-mini"]
+#           COMPLEX: ["gpt-4o"]
+#         default_model: gpt-4o-mini
+#         plugins:
+#           - litellm_plugin_language_detector.plugin.language_detector_plugin
