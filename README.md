@@ -4,13 +4,12 @@ Reference implementation of a **LiteLLM Routing Plugin**. It exists to teach
 the Routing Plugin API and set a quality bar for the ecosystem — not to be
 the best language detector out there.
 
-## Qué hace
+## What it does
 
-* Lee `context.structured_messages`, se queda solo con los mensajes
-  `role="user"`.
-* Detecta el idioma del texto con [`lingua`](https://github.com/pemistahl/lingua-py)
-  (offline, sin modelos enormes, buena precisión).
-* Publica el resultado en `context.signals["language-detector"]`:
+* Reads `context.structured_messages`, keeping only `role="user"` messages.
+* Detects the text's language with [`lingua`](https://github.com/pemistahl/lingua-py)
+  (offline, no huge models, good accuracy).
+* Publishes the result to `context.signals["language-detector"]`:
 
   ```json
   {
@@ -20,8 +19,8 @@ the best language detector out there.
   }
   ```
 
-* Si no puede detectar el idioma (texto vacío, solo emojis, señal ambigua),
-  publica:
+* If it can't detect a language (empty text, emojis only, ambiguous
+  signal), it publishes:
 
   ```json
   {
@@ -31,47 +30,49 @@ the best language detector out there.
   }
   ```
 
-* Nunca lanza una excepción. En el peor caso, publica el resultado `unknown`.
+* Never raises an exception. In the worst case, it publishes the `unknown`
+  result.
 
-### Idiomas soportados (v1)
+### Supported languages (v1)
 
 English, Spanish, French, German, Portuguese, Italian, Dutch, Japanese,
 Chinese, Korean.
 
-No es necesario cubrir 100 idiomas para que el plugin sea útil — ver
-[Roadmap](#roadmap) para cómo crece esta lista.
+Covering 100 languages isn't necessary for the plugin to be useful — see the
+[Roadmap](#roadmap) for how this list grows.
 
-## Qué NO hace
+## What it does NOT do
 
-* No modifica `context.candidate_models` (no narrowing, no filtrado).
-* No modifica `context.raw_messages`, `context.structured_messages` ni
-  `context.metadata` — un routing plugin solo puede leerlos.
-* No reescribe el prompt ni el contenido de ningún mensaje.
-* No depende del Router ni de ningún otro plugin.
-* No imprime ni loguea nada — solo publica señales.
-* No lanza excepciones hacia quien lo invoca, ni corta el pipeline.
+* Doesn't modify `context.candidate_models` (no narrowing, no filtering).
+* Doesn't modify `context.raw_messages`, `context.structured_messages`, or
+  `context.metadata` — a routing plugin can only read those.
+* Doesn't rewrite the prompt or any message content.
+* Doesn't depend on the Router or on any other plugin.
+* Doesn't print or log anything — it only publishes signals.
+* Never raises an exception back to the caller, and never short-circuits
+  the pipeline.
 
-## Cómo instalar
+## How to install
 
 ```bash
 pip install litellm-plugin-language-detector
 ```
 
-Para desarrollo local (incluye `pytest` y `pytest-asyncio`):
+For local development (includes `pytest` and `pytest-asyncio`):
 
 ```bash
 pip install -e ".[dev]"
 ```
 
-## Cómo configurar
+## How to configure
 
-Requiere `litellm>=1.92` (versión donde se introdujeron los Routing Plugins,
-ver [discusión #32168](https://github.com/BerriAI/litellm/discussions/32168)).
+Requires `litellm>=1.92` (the version where Routing Plugins were
+introduced, see [discussion #32168](https://github.com/BerriAI/litellm/discussions/32168)).
 
 ### SDK
 
-Se pasa como instancia a `Router(plugins=[...])`. Corre en cada decisión de
-ruteo:
+Passed as an instance to `Router(plugins=[...])`. Runs on every routing
+decision:
 
 ```python
 from litellm import Router
@@ -87,10 +88,10 @@ router = Router(
 
 ### Proxy
 
-Dos superficies, según dónde quieras que corra:
+Two surfaces, depending on where you want it to run:
 
-**Global**, en cada decisión de ruteo (`router_settings.plugins`, equivalente
-proxy de `Router(plugins=[...])`):
+**Global**, on every routing decision (`router_settings.plugins`, the proxy
+equivalent of `Router(plugins=[...])`):
 
 ```yaml
 router_settings:
@@ -98,8 +99,8 @@ router_settings:
     - litellm_plugin_language_detector.plugin.language_detector_plugin
 ```
 
-**Solo dentro del complexity router**, contra el candidate pool ya filtrado
-por tier (`complexity_router_config.plugins`):
+**Scoped to the complexity router only**, against the tier's already
+filtered candidate pool (`complexity_router_config.plugins`):
 
 ```yaml
 model_list:
@@ -115,18 +116,18 @@ model_list:
           - litellm_plugin_language_detector.plugin.language_detector_plugin
 ```
 
-En ambos casos la ruta apuntada debe ser una **instancia**, no la clase —
-por eso el paquete expone `language_detector_plugin`, un singleton ya
-instanciado, además de la clase `LanguageDetectorPlugin` para quien prefiera
-instanciar la suya.
+In both cases the referenced path must point to an **instance**, not the
+class — that's why the package exposes `language_detector_plugin`, an
+already-instantiated singleton, in addition to the `LanguageDetectorPlugin`
+class for anyone who'd rather instantiate their own.
 
-Ver [`examples/sdk.py`](examples/sdk.py) y [`examples/proxy.yaml`](examples/proxy.yaml)
-para ejemplos completos.
+See [`examples/sdk.py`](examples/sdk.py) and [`examples/proxy.yaml`](examples/proxy.yaml)
+for complete examples.
 
-## Cómo consumir el signal desde otro plugin
+## How to consume the signal from another plugin
 
-Cualquier plugin que corra después en la misma request (más adelante en la
-lista de `plugins=[...]`) puede leer el namespace `language-detector` desde
+Any plugin that runs later in the same request (further down the
+`plugins=[...]` list) can read the `language-detector` namespace from
 `context.signals`:
 
 ```python
@@ -134,70 +135,71 @@ class MyDownstreamPlugin:
     async def run(self, context):
         signal = context.signals.get("language-detector")
         if signal and signal["language"] == "es":
-            # ajustar candidate_models, lo que sea -- eso es
-            # responsabilidad de MyDownstreamPlugin, no de este plugin.
+            # adjust candidate_models, whatever -- that's
+            # MyDownstreamPlugin's responsibility, not this plugin's.
             ...
         return context
 ```
 
-Una vez que el pipeline de plugins termina, el Router y las estrategias de
-auto-router (complexity, adaptive, quality) leen la misma señal desde
-`metadata["routing_plugin_signals"]["language-detector"]` — así es como
-`context.signals` "sale" del pipeline de plugins hacia el resto del ruteo.
+Once the plugin pipeline finishes, the Router and the auto-router
+strategies (complexity, adaptive, quality) read the same signal from
+`metadata["routing_plugin_signals"]["language-detector"]` — that's how
+`context.signals` "exits" the plugin pipeline into the rest of routing.
 
-Este plugin nunca lee sus propias señales de una ejecución anterior ni las
-de otros plugins: solo escribe una vez, bajo su propio namespace.
+This plugin never reads its own signal from a previous run, nor any other
+plugin's: it only writes once, under its own namespace.
 
-## Cómo extenderlo
+## How to extend it
 
-* **Nuevo idioma**: agregar la entrada correspondiente de `lingua.Language`
-  al mapa `_SUPPORTED_LANGUAGES` en
+* **New language**: add the corresponding `lingua.Language` entry to the
+  `_SUPPORTED_LANGUAGES` map in
   [`detector.py`](litellm_plugin_language_detector/detector.py).
-* **Otro backend de detección** (p. ej. `fasttext`, `langdetect`): reemplazar
-  la implementación de `detect_language()` en `detector.py` manteniendo el
-  mismo contrato de salida (`language`, `confidence`, `detector`).
-* **Más campos en la señal** (script, RTL, multilenguaje): ver
-  [Roadmap](#roadmap) — la idea es agregarlos sin romper los campos v1.
+* **Different detection backend** (e.g. `fasttext`, `langdetect`): replace
+  the `detect_language()` implementation in `detector.py`, keeping the same
+  output contract (`language`, `confidence`, `detector`).
+* **More fields in the signal** (script, RTL, multilingual): see the
+  [Roadmap](#roadmap) — the idea is to add them without breaking the v1
+  fields.
 
 ## Signal contract
 
-Espacio de nombres: `language-detector`.
+Namespace: `language-detector`.
 
-| Campo        | Tipo      | Descripción                                   |
-| ------------ | --------- | ---------------------------------------------- |
-| `language`   | ISO-639-1 | Código de idioma, o `"unknown"`.               |
-| `confidence` | float     | 0.0–1.0. `0.0` cuando `language` es `"unknown"`. |
-| `detector`   | string    | Nombre del backend usado (`"lingua"`).         |
+| Field        | Type      | Description                                |
+| ------------ | --------- | ------------------------------------------- |
+| `language`   | ISO-639-1 | Language code, or `"unknown"`.              |
+| `confidence` | float     | 0.0–1.0. `0.0` when `language` is `"unknown"`. |
+| `detector`   | string    | Name of the backend used (`"lingua"`).      |
 
-### Convención de nombres para `signals`
+### Naming convention for `signals`
 
-Este plugin usa un namespace explícito (`context.signals["language-detector"]`)
-en vez de una clave genérica como `context.signals["language"]`. Esto evita
-colisiones entre plugins distintos y establece una convención que otros
-plugins del ecosistema pueden seguir: `domain-classifier`, `provider-health`,
-`budget-policy`, etc. Si estás escribiendo tu propio plugin, adopta el mismo
-patrón.
+This plugin uses an explicit namespace (`context.signals["language-detector"]`)
+instead of a generic key like `context.signals["language"]`. This avoids
+collisions between different plugins and establishes a convention other
+plugins in the ecosystem can follow: `domain-classifier`, `provider-health`,
+`budget-policy`, etc. If you're writing your own plugin, adopt the same
+pattern.
 
-## Compatibilidad
+## Compatibility
 
-LiteLLM >= 1.92 (versión donde se introdujeron los Routing Plugins). Solo
-funciona con Router async (`router.acompletion(...)`) — `Router.completion()`
-síncrono lanza si hay plugins configurados.
+LiteLLM >= 1.92 (the version where Routing Plugins were introduced). Only
+works with the async Router (`router.acompletion(...)`) — the sync
+`Router.completion()` raises when plugins are configured.
 
-`plugin.py` intenta importar el `RoutingContext` real de
-`litellm.types.router`; si el litellm instalado es anterior a 1.92 y no lo
-tiene, usa un `RoutingContext` local (mismo shape: `raw_messages`,
-`structured_messages`, `candidate_models`, `metadata`, `signals`) para que
-el plugin siga pudiendo probarse y usarse de forma standalone. Cualquier
-objeto que exponga esos cinco atributos es compatible.
+`plugin.py` tries to import the real `RoutingContext` from
+`litellm.types.router`; if the installed litellm predates 1.92 and doesn't
+have it, it falls back to a local `RoutingContext` (same shape:
+`raw_messages`, `structured_messages`, `candidate_models`, `metadata`,
+`signals`) so the plugin can still be tested and used standalone. Any
+object exposing those five attributes is compatible.
 
 ## Roadmap
 
-* **v1** — solo detectar idioma (este release).
-* **v2** — agregar `"script": "latin"`.
-* **v3** — agregar `"rtl": false`.
-* **v4** — agregar una lista `"languages"` con múltiples candidatos y su
-  confianza, para prompts multilingües.
+* **v1** — language detection only (this release).
+* **v2** — add `"script": "latin"`.
+* **v3** — add `"rtl": false`.
+* **v4** — add a `"languages"` list with multiple candidates and their
+  confidence, for multilingual prompts.
 
 ## Tests
 
@@ -205,5 +207,5 @@ objeto que exponga esos cinco atributos es compatible.
 pytest
 ```
 
-Cubre español, inglés, francés, chino, texto vacío, emojis y fragmentos de
-código.
+Covers Spanish, English, French, Chinese, empty text, emojis, and code
+snippets.
